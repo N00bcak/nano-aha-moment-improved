@@ -1,11 +1,16 @@
-# nanoAhaMoment: Single File "RL for LLM" Library
-> Amirhossein Kazemnejad*, Milad Aghajohari*, Alessandro Sordoni, Aaron Courville, Siva Reddy
+# nano-aha-moment-improved
+> N00bcak
+
+### Preamble
+So it turns out that [nano-aha-moment](https://github.com/McGill-NLP/nano-aha-moment), while
+a wonderful foundation for RL training of LLMs, has a much of pretty annoying bugs and issues that
+make it impossible to run OOTB.
+This repository is a (detached) fork which aims to fix those issues.
 
 Implementation of DeepSeek R1-zero style training with:
 
-- Single 80G GPU (and also multi-GPU)
-- No RL Library 
-- 3B Base Model (and also 7B models with multi-GPU)
+- Single GPU (or multi-GPU) training
+- From-scratch RL code.
 - Full Parameter Tuning 
 - Efficient (Competetive performance to verl but much simpler)
 - Up to 32K context size for 3B model with multi-GPU (or 16K context size for 7B model)
