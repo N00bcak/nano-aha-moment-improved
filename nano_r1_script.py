@@ -55,7 +55,23 @@ arg_parser.add_argument("--algorithm", type=str, choices=["grpo", "vineppo"], de
 arg_parser.add_argument("--vineppo_k", type=int, default=3, help="Number of MC samples to take for each response")
 arg_parser.add_argument("--run_id", type=str, default=None, help="Run ID")
 arg_parser.add_argument("--nproc", type=int, default=1, help="Number of processes (data parallelism) to use")
+arg_parser.add_argument("--num_iterations", type=int, default=1000, help="Total number of training iterations")
+arg_parser.add_argument("--eps_per_iteration", type=int, default=64, help="Number of episodes to collect per iteration")
+arg_parser.add_argument(
+    "--gens_per_sample", type=int, default=8, help="Number of generations to produce for each input sample. May help for more complex tasks."
+)
+arg_parser.add_argument(
+    "--visible_devices",
+    type = str,
+    default = "0",
+    help = "Comma-separated list of visible devices. E.g., '0,1,2,3'",
+)
 
+def parse_args(args) -> argparse.Namespace:
+    parsed_args = arg_parser.parse_args(args)
+    # Process visible devices into a list of integers
+    parsed_args.visible_devices = [int(x) for x in parsed_args.visible_devices.split(",")]
+    return parsed_args
 
 # Load and process dataset
 def preprocess_example(
@@ -620,7 +636,8 @@ def compute_pg_loss(
 
     with torch.no_grad():
         entropy = -logps.sum() / labels_mask.sum()  # scalar
-        zero_advantages = close_to_zero(advantages, labels_mask)  # scalar
+        # CORRECTED: Off-by-one error in zero-advantages logging
+        zero_advantages = close_to_zero(advantages[..., 1:], labels_mask)  # scalar
 
     policy_loss = -logps * advantages[..., 1:]  # [batch_size, seq_len-1]
     policy_loss = policy_loss * labels_mask  # [batch_size, seq_len-1]
@@ -646,6 +663,19 @@ def main(rank: int):
     nproc = args.nproc
     initialize_training_process_group(rank, nproc)
     curr_cuda_device = torch.device("cuda")
+
+    if not len(args.visible_devices):
+        raise ValueError("No visible devices specified. Set CUDA_VISIBLE_DEVICES environment variable.")
+    if rank >= len(args.visible_devices):
+        raise ValueError(f"Rank {rank} exceeds the number of visible devices: {len(args.visible_devices)}")
+    
+    initialize_training_process_group(rank, nproc, args.visible_devices[rank])
+    curr_cuda_device = torch.device(f"cuda:{args.visible_devices[rank]}")
+    torch.cuda.set_device(curr_cuda_device)
+    print(f"Current CUDA device set to: {curr_cuda_device}")
+
+    # Safety measure: change rank.
+    os.environ["LOCAL_RANK"] = str(args.visible_devices[rank])
 
     # Disable logging for non-main processes to avoid duplicate logs
     if dist.get_rank() != 0:
@@ -1156,6 +1186,6 @@ if __name__ == "__main__":
         raise ValueError(f"Requested {args.nproc} processes, but only {n_gpus} GPUs are available.")
 
     if args.nproc == 1:
-        main(rank=0)
+        main(rank = 0)
     else:
         torch.multiprocessing.spawn(main, nprocs=args.nproc)
